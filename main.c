@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <err.h>
+#include <fcntl.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdint.h>
@@ -7,14 +8,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #define STACK_SIZE (1024 * 1024) /* Stack size for cloned child */
+#define PATH_MAX 4096
 
-static int childFunc(void *arg) {
+static int childFunc(void *arg)
+{
         struct utsname uts;
 
         /* Change hostname in UTS namespace in child */
@@ -31,6 +35,33 @@ static int childFunc(void *arg) {
         }
 
         return 0; /* Child terminates now */
+}
+
+static int cg(pid_t child)
+{
+        char dir[PATH_MAX] = {0};
+        if (snprintf(dir, sizeof(dir), "/sys/fs/cgroup/%s", "grp1") == -1)
+                return -1;
+
+        if (mkdir(dir, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) {
+                perror("Failed to create cgroup");
+                return -1;
+        }
+
+        char path[PATH_MAX] = {0};
+        if (snprintf(path, sizeof(path), "%s/%s", dir, "cgroup.procs") == -1)
+                return -1;
+
+        FILE *fp = fopen(path, "a");
+        if (fp == NULL) {
+                perror("Failed to open cgroup.procs file");
+                return -1;
+        }
+
+        fprintf(fp, "%d\n", child);
+        fclose(fp);
+
+        return 0;
 }
 
 int main(int argc, char *argv[])
@@ -61,6 +92,9 @@ int main(int argc, char *argv[])
                 err(EXIT_FAILURE, "clone");
         printf("clone() returned %jd\n", (intmax_t) pid);
 
+        /* Create the control group and add the child process to it */
+        cg(pid);
+
         /* Parent falls through to here */
 
         sleep(1); /* Give child time to change its hostname */
@@ -71,6 +105,9 @@ int main(int argc, char *argv[])
         if (waitpid(pid, NULL, 0) == -1)
                 err(EXIT_FAILURE, "waitpid");
         printf("Child has terminated\n");
+
+        if (rmdir("/sys/fs/cgroup/grp1") == -1)
+                err(EXIT_FAILURE, "failed to delete cgroup");
 
         exit(EXIT_SUCCESS);
 }
