@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <err.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdint.h>
@@ -15,7 +16,6 @@
 #include <unistd.h>
 
 #define STACK_SIZE (1024 * 1024) /* Stack size for cloned child */
-#define PATH_MAX 4096
 
 static int childFunc(void *arg)
 {
