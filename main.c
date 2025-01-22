@@ -30,7 +30,7 @@ static int childFunc(void *arg)
                 err(EXIT_FAILURE, "uname");
         printf("uts.nodename in child: %s\n", uts.nodename);
 
-        if (execl("/proc/self/exe", "./main", "child", NULL)) {
+        if (execl("/bin/bash", "bash", (char *)NULL)) {
                 err(EXIT_FAILURE, "execl");
         }
 
@@ -64,18 +64,21 @@ static int cg(pid_t child)
         return 0;
 }
 
+int directory_exists(const char *path)
+{
+        struct stat info;
+        if (stat(path, &info) != 0)
+                return 0;
+
+        return S_ISDIR(info.st_mode);
+}
+
 int main(int argc, char *argv[])
 {
         char *stack;
         char *stackTop;
         pid_t pid;
         struct utsname uts;
-
-        if (argc > 1 && strcmp(argv[1], "child") == 0) {
-                printf("Child running\n");
-                sleep(20);
-                exit(EXIT_SUCCESS);
-        }
 
         stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
@@ -106,8 +109,10 @@ int main(int argc, char *argv[])
                 err(EXIT_FAILURE, "waitpid");
         printf("Child has terminated\n");
 
-        if (rmdir("/sys/fs/cgroup/grp1") == -1)
-                err(EXIT_FAILURE, "failed to delete cgroup");
+        if (directory_exists("/sys/fs/cgroup/grp1")) {
+                if (rmdir("/sys/fs/cgroup/grp1") == -1)
+                        err(EXIT_FAILURE, "failed to delete cgroup");
+        }
 
         exit(EXIT_SUCCESS);
 }
